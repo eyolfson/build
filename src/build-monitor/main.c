@@ -24,6 +24,7 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 
 #include <sys/user.h>
 #include <sys/reg.h>
+#include <sys/types.h>
 
 #include <sys/syscall.h>
 
@@ -43,7 +44,10 @@ static int monitor(pid_t pid)
         long rc = ptrace(PTRACE_GETREGS, pid, NULL, &regs);
 
         if (regs.orig_rax == __NR_open) {
-            printf("syscall(open)\n");
+            printf("syscall [open]\n");
+            rc = ptrace(PTRACE_PEEKDATA, pid, regs.rdi, 0);
+            char * s = (char *) &rc;
+            printf("%c%c%c%c\n", s[0], s[1], s[2], s[3]);
         }
 
         /* Make the child execute another instruction */
@@ -51,9 +55,6 @@ static int monitor(pid_t pid)
             perror("ptrace");
             return EXIT_FAILURE;
         }
-
-        /* long orig_eax = ptrace(PTRACE_PEEKUSER, pid, 11 * 8, NULL); */
-        /* printf("syscall %d\n", orig_eax); */
 
         /* Wait for child to stop on its next instruction */
         wait(&wait_status);

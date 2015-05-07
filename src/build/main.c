@@ -20,6 +20,23 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 #include <string.h>
 #include <unistd.h>
 
+/* inline size_t linux_write(fd_t, char *, size_t) __attribute__((always_inline)); */
+
+
+__attribute__((always_inline)) inline
+size_t linux_write(unsigned int fd, char *buf, size_t count)
+{
+    size_t ret;
+    __asm__ volatile
+    (
+        "syscall"
+        : "=rax" (ret)
+        : "rax"(1), "D"(fd), "S"(buf), "d"(count)
+        : "cc", "rcx", "r11", "memory"
+    );
+    return ret;
+}
+
 int main(int argc, char **argv)
 {
     for (int i; i < argc; ++i) {
@@ -28,5 +45,18 @@ int main(int argc, char **argv)
             return EXIT_SUCCESS;
         }
     }
+
+    linux_write(1, "test 2\n", 7);
+
+    /* int ret; */
+    /* char *buf = "test\ning"; */
+    /* asm volatile */
+    /* ( */
+    /*     "syscall" */
+    /*     : "=a" (ret) */
+    /*     : "0"(1), "D"(1), "S"(buf), "d"(5) */
+    /*     : "cc", "rcx", "r11", "memory" */
+    /* ); */
+    
     return EXIT_FAILURE;
 }
