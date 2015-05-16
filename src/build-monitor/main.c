@@ -30,6 +30,8 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 
 #include <sys/syscall.h>
 
+#include <linux/errno.h>
+
 #define BUFFER_MAX 4096
 
 static char buffer[BUFFER_MAX];
@@ -75,13 +77,28 @@ static int monitor(pid_t pid)
                 printf("buffer error\n");
                 exit(2);
             }
-            printf(" = %lld\n", regs.rax);
+            printf(" = %lld", regs.rax);
+
+            if ((long long) regs.rax < 0) {
+                if (-((long long) regs.rax) == ENOSYS) {
+                    printf(" (ENOSYS)");
+                }
+            }
+
+            printf("\n");
         }
 
         if (syscall_number == __NR_close) {
-            printf("close: %llu = %lld\n", regs.rdi, regs.rax);
-        }
+            printf("close: %llu = %lld", regs.rdi, regs.rax);
 
+            if ((long long) regs.rax < 0) {
+                if (-((long long) regs.rax) == ENOSYS) {
+                    printf(" (ENOSYS)");
+                }
+            }
+
+            printf("\n");
+        }
 
         /* Make the child execute another instruction */
         if (ptrace(PTRACE_SYSCALL, pid, 0, 0) < 0) {
