@@ -30,6 +30,26 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 
 #include <sys/syscall.h>
 
+#define BUFFER_MAX 4096
+
+static char buffer[BUFFER_MAX];
+
+bool extract_path_to_buffer(pid_t pid, void* addr)
+{
+    long val;
+    uint16_t i = 0;
+    while (true) {
+        val = ptrace(PTRACE_PEEKDATA, pid, addr + i, 0);
+        char * s = (char *) &val;
+        for (uint16_t j = 0; j < sizeof(long); ++j) {
+            buffer[i] = s[j];
+            ++i;
+            if (i == BUFFER_MAX) { return false; }
+            if (s[j] == '\0') { return true; }
+        }
+    }
+}
+
 static int monitor(pid_t pid)
 {
     int wait_status;
@@ -43,35 +63,25 @@ static int monitor(pid_t pid)
         icounter++;
 
         struct user_regs_struct regs;
-        long rc = ptrace(PTRACE_GETREGS, pid, NULL, &regs);
+        ptrace(PTRACE_GETREGS, pid, NULL, &regs);
 
-        if (regs.orig_rax == __NR_open) {
-            char buffer[4096];
-            uint16_t i = 0;
-            void* filename = (void*) regs.rdi;
-            bool incomplete_string = true;
-            do {
-                rc = ptrace(PTRACE_PEEKDATA, pid, filename + i, 0);
-                char * s = (char *) &rc;
-                for (uint16_t j = 0; j < sizeof(long); ++j) {
-                    buffer[i] = s[j];
-                    ++i;
-
-                    /* Horrible error condition */
-                    if (i == 4096) {
-                        printf("buffer too small\n");
-                        exit(2);
-                    }
-
-                    if (s[j] == '\0') {
-                        incomplete_string = false;
-                        break;
-                    }
-                }
-            } while (incomplete_string);
-
-            printf("open: %s\n", buffer);
+        long syscall_number = regs.orig_rax;
+        
+        if (syscall_number == __NR_open) {
+            if (extract_path_to_buffer(pid, (void*) regs.rdi)) {
+                printf("open: %s", buffer);
+            }
+            else {
+                printf("buffer error\n");
+                exit(2);
+            }
+            printf(" = %lld\n", regs.rax);
         }
+
+        if (syscall_number == __NR_close) {
+            printf("close: %llu = %lld\n", regs.rdi, regs.rax);
+        }
+
 
         /* Make the child execute another instruction */
         if (ptrace(PTRACE_SYSCALL, pid, 0, 0) < 0) {
@@ -88,9 +98,9 @@ static int monitor(pid_t pid)
     return EXIT_SUCCESS;
 }
 
-static int target(char *const path)
+static int target(char *const * args)
 {
-    printf("target started. will run '%s'\n", path);
+    printf("target started. will run '%s'\n", args[0]);
 
     /* Allow tracing of this process */
     if (ptrace(PTRACE_TRACEME, 0, 0, 0) < 0) {
@@ -99,16 +109,16 @@ static int target(char *const path)
     }
 
     /* Replace this process's image with the given program */
-    execl(path, path, 0);
+    execv(args[0], args);
 
     /* Reached if there's an error */
     perror("target execl");
     return EXIT_FAILURE;
 }
 
-int main(int argc, char *const *const argv)
+int main(int argc, char *const * argv)
 {
-    for (int i; i < argc; ++i) {
+    for (int i = 0; i < argc; ++i) {
         if (strcmp(argv[i], "--version") == 0) {
             printf("Build Monitor 0.0.1-unknown\n");
             return EXIT_SUCCESS;
@@ -123,7 +133,7 @@ int main(int argc, char *const *const argv)
     pid_t pid;
     pid = fork();
     if (pid == 0) {
-        return target(argv[1]);
+        return target(&argv[1]);
     }
     else if (pid > 0) {
         return monitor(pid);

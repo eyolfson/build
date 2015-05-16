@@ -1,4 +1,4 @@
-CFLAGS := -std=c11
+CFLAGS := -std=c11 -Wall
 
 bin/build-monitor: var/cache/build/build-monitor/main.o bin
 	$(CC) $< -o $@
