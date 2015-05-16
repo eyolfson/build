@@ -14,6 +14,8 @@ You should have received a copy of the GNU General Public License along with
 this program. If not, see <http://www.gnu.org/licenses/>.
 *******************************************************************************/
 
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,10 +46,31 @@ static int monitor(pid_t pid)
         long rc = ptrace(PTRACE_GETREGS, pid, NULL, &regs);
 
         if (regs.orig_rax == __NR_open) {
-            printf("syscall [open]\n");
-            rc = ptrace(PTRACE_PEEKDATA, pid, regs.rdi, 0);
-            char * s = (char *) &rc;
-            printf("%c%c%c%c\n", s[0], s[1], s[2], s[3]);
+            char buffer[4096];
+            uint16_t i = 0;
+            void* filename = (void*) regs.rdi;
+            bool incomplete_string = true;
+            do {
+                rc = ptrace(PTRACE_PEEKDATA, pid, filename + i, 0);
+                char * s = (char *) &rc;
+                for (uint16_t j = 0; j < sizeof(long); ++j) {
+                    buffer[i] = s[j];
+                    ++i;
+
+                    /* Horrible error condition */
+                    if (i == 4096) {
+                        printf("buffer too small\n");
+                        exit(2);
+                    }
+
+                    if (s[j] == '\0') {
+                        incomplete_string = false;
+                        break;
+                    }
+                }
+            } while (incomplete_string);
+
+            printf("open: %s\n", buffer);
         }
 
         /* Make the child execute another instruction */
