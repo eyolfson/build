@@ -129,7 +129,7 @@ static int target(char *const * args)
     execv(args[0], args);
 
     /* Reached if there's an error */
-    perror("target execl");
+    perror("target exec");
     return EXIT_FAILURE;
 }
 
